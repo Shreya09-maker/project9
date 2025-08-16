@@ -1,23 +1,56 @@
 import streamlit as st
 from PIL import Image
 import numpy as np
-import os
-import gdown
+import cv2
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
+import requests
+import os
 
-# ===== Download model from Google Drive if not exists =====
-MODEL_FILE = "tomato_model.h5"
-GDRIVE_URL = "https://drive.google.com/uc?id=1VE7RUXKh4GupqdivjHqX_5bT6xz2z8lq"
+# Google Drive file ID for the model
+DRIVE_FILE_ID = "1VE7RUXKh4GupqdivjHqX_5bT6xz2z8lq"
+MODEL_PATH = "tomato_model.h5"
 
-if not os.path.exists(MODEL_FILE):
-    with st.spinner("Downloading model..."):
-        gdown.download(GDRIVE_URL, MODEL_FILE, quiet=False)
+def download_file_from_google_drive(id, destination):
+    """Download file from Google Drive by ID."""
+    URL = "https://docs.google.com/uc?export=download"
 
-# ===== Load the model =====
-model = load_model(MODEL_FILE)
+    session = requests.Session()
 
-# ===== Class names =====
+    response = session.get(URL, params={'id': id}, stream=True)
+    token = get_confirm_token(response)
+
+    if token:
+        params = {'id': id, 'confirm': token}
+        response = session.get(URL, params=params, stream=True)
+
+    save_response_content(response, destination)    
+
+def get_confirm_token(response):
+    """Check and get Google Drive download confirmation token."""
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            return value
+    return None
+
+def save_response_content(response, destination):
+    """Save response content to destination file."""
+    CHUNK_SIZE = 32768
+
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(CHUNK_SIZE):
+            if chunk:
+                f.write(chunk)
+
+# Download model if not already downloaded
+if not os.path.exists(MODEL_PATH):
+    with st.spinner("Downloading model from Google Drive..."):
+        download_file_from_google_drive(DRIVE_FILE_ID, MODEL_PATH)
+
+# Load model
+model = load_model(MODEL_PATH)
+
+# Class names corresponding to your model outputs
 class_names = [
     'Tomato___Bacterial_spot',
     'Tomato___Early_blight',
@@ -46,16 +79,15 @@ def predict(image: Image.Image):
     return predicted_label, confidence
 
 def is_tomato_leaf_color(image: Image.Image):
-    img_np = np.array(image.convert('RGB'))
-    lower = np.array([10, 40, 10])
-    upper = np.array([150, 255, 150])
-    mask = ((img_np[:, :, 0] >= lower[0]) & (img_np[:, :, 0] <= upper[0]) &
-            (img_np[:, :, 1] >= lower[1]) & (img_np[:, :, 1] <= upper[1]) &
-            (img_np[:, :, 2] >= lower[2]) & (img_np[:, :, 2] <= upper[2]))
-    green_ratio = np.sum(mask) / (img_np.shape[0] * img_np.shape[1])
-    return green_ratio > 0.05
+    img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    hsv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2HSV)
+    lower_green = np.array([35, 40, 40])
+    upper_green = np.array([85, 255, 255])
+    mask = cv2.inRange(hsv, lower_green, upper_green)
+    green_ratio = cv2.countNonZero(mask) / (mask.shape[0] * mask.shape[1])
+    return green_ratio > 0.15
 
-# ===== Streamlit UI =====
+# Streamlit UI
 st.set_page_config(page_title="🍅 Tomato Leaf Disease Detector", layout="wide", page_icon="🍅")
 
 with st.sidebar:
@@ -86,13 +118,11 @@ uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png
 
 if uploaded_file:
     image = Image.open(uploaded_file)
-
     if not is_tomato_leaf_color(image):
         st.error("❌ This does not look like a tomato leaf (not enough green pixels). Please upload a valid tomato leaf image.")
     else:
         predicted_label, confidence = predict(image)
         confidence_threshold = 60
-
         if (predicted_label not in class_names) or (confidence < confidence_threshold):
             st.error("❌ The uploaded image does not appear to be a tomato leaf from the dataset. Please upload a valid tomato leaf image.")
         else:
