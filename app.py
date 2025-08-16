@@ -1,14 +1,23 @@
 import streamlit as st
 from PIL import Image
 import numpy as np
+import os
+import gdown
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
 
-# Load your trained tomato leaf disease model
-MODEL_PATH = r"C:\Users\shrey\Downloads\New folder\tomato_model.h5"
-model = load_model(MODEL_PATH)
+# ===== Download model from Google Drive if not exists =====
+MODEL_FILE = "tomato_model.h5"
+GDRIVE_URL = "https://drive.google.com/uc?id=1VE7RUXKh4GupqdivjHqX_5bT6xz2z8lq"
 
-# Class names corresponding to your model outputs
+if not os.path.exists(MODEL_FILE):
+    with st.spinner("Downloading model..."):
+        gdown.download(GDRIVE_URL, MODEL_FILE, quiet=False)
+
+# ===== Load the model =====
+model = load_model(MODEL_FILE)
+
+# ===== Class names =====
 class_names = [
     'Tomato___Bacterial_spot',
     'Tomato___Early_blight',
@@ -23,14 +32,12 @@ class_names = [
 ]
 
 def preprocess_image(image: Image.Image):
-    """Resize and scale image for model input."""
     image = image.convert('RGB').resize((150, 150))
     img_array = img_to_array(image).astype('float32') / 255.0
     img_array = np.expand_dims(img_array, axis=0)
     return img_array
 
 def predict(image: Image.Image):
-    """Predict disease label and confidence from image."""
     processed = preprocess_image(image)
     preds = model.predict(processed)[0]
     predicted_index = np.argmax(preds)
@@ -39,21 +46,16 @@ def predict(image: Image.Image):
     return predicted_label, confidence
 
 def is_tomato_leaf_color(image: Image.Image):
-    """Check if image has enough green pixels to be considered a tomato leaf."""
     img_np = np.array(image.convert('RGB'))
-
-    # Looser green pixel thresholds to avoid false rejection
     lower = np.array([10, 40, 10])
     upper = np.array([150, 255, 150])
-
     mask = ((img_np[:, :, 0] >= lower[0]) & (img_np[:, :, 0] <= upper[0]) &
             (img_np[:, :, 1] >= lower[1]) & (img_np[:, :, 1] <= upper[1]) &
             (img_np[:, :, 2] >= lower[2]) & (img_np[:, :, 2] <= upper[2]))
-
     green_ratio = np.sum(mask) / (img_np.shape[0] * img_np.shape[1])
-    return green_ratio > 0.05  # Lowered threshold to accept more images
+    return green_ratio > 0.05
 
-# Streamlit app setup
+# ===== Streamlit UI =====
 st.set_page_config(page_title="🍅 Tomato Leaf Disease Detector", layout="wide", page_icon="🍅")
 
 with st.sidebar:
@@ -85,14 +87,12 @@ uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png
 if uploaded_file:
     image = Image.open(uploaded_file)
 
-    # Check green pixel ratio first
     if not is_tomato_leaf_color(image):
         st.error("❌ This does not look like a tomato leaf (not enough green pixels). Please upload a valid tomato leaf image.")
     else:
         predicted_label, confidence = predict(image)
-        confidence_threshold = 60  # Adjust as needed for model confidence
+        confidence_threshold = 60
 
-        # Verify prediction is a known tomato class and confidence is sufficient
         if (predicted_label not in class_names) or (confidence < confidence_threshold):
             st.error("❌ The uploaded image does not appear to be a tomato leaf from the dataset. Please upload a valid tomato leaf image.")
         else:
