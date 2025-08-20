@@ -2,55 +2,19 @@ import streamlit as st
 from PIL import Image
 import numpy as np
 import cv2
+import os
+import gdown
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
-import requests
-import os
 
-# Google Drive file ID for the model
+# ------------------ Configuration ------------------
+
+# Google Drive file ID and model path
 DRIVE_FILE_ID = "1VE7RUXKh4GupqdivjHqX_5bT6xz2z8lq"
 MODEL_PATH = "tomato_model.h5"
+MODEL_URL = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}"
 
-def download_file_from_google_drive(id, destination):
-    """Download file from Google Drive by ID."""
-    URL = "https://docs.google.com/uc?export=download"
-
-    session = requests.Session()
-
-    response = session.get(URL, params={'id': id}, stream=True)
-    token = get_confirm_token(response)
-
-    if token:
-        params = {'id': id, 'confirm': token}
-        response = session.get(URL, params=params, stream=True)
-
-    save_response_content(response, destination)    
-
-def get_confirm_token(response):
-    """Check and get Google Drive download confirmation token."""
-    for key, value in response.cookies.items():
-        if key.startswith('download_warning'):
-            return value
-    return None
-
-def save_response_content(response, destination):
-    """Save response content to destination file."""
-    CHUNK_SIZE = 32768
-
-    with open(destination, "wb") as f:
-        for chunk in response.iter_content(CHUNK_SIZE):
-            if chunk:
-                f.write(chunk)
-
-# Download model if not already downloaded
-if not os.path.exists(MODEL_PATH):
-    with st.spinner("Downloading model from Google Drive..."):
-        download_file_from_google_drive(DRIVE_FILE_ID, MODEL_PATH)
-
-# Load model
-model = load_model(MODEL_PATH)
-
-# Class names corresponding to your model outputs
+# Class labels for predictions
 class_names = [
     'Tomato___Bacterial_spot',
     'Tomato___Early_blight',
@@ -63,6 +27,23 @@ class_names = [
     'Tomato___Tomato_mosaic_virus',
     'Tomato___healthy'
 ]
+
+# ------------------ Model Loading ------------------
+
+# Download the model if not already present
+if not os.path.exists(MODEL_PATH):
+    with st.spinner("⬇️ Downloading model from Google Drive..."):
+        gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+
+# Safety check for corrupted download
+if os.path.getsize(MODEL_PATH) < 1000:
+    st.error("❌ Downloaded model file is corrupted or incomplete.")
+    st.stop()
+
+# Load the model
+model = load_model(MODEL_PATH)
+
+# ------------------ Utility Functions ------------------
 
 def preprocess_image(image: Image.Image):
     image = image.convert('RGB').resize((150, 150))
@@ -87,7 +68,8 @@ def is_tomato_leaf_color(image: Image.Image):
     green_ratio = cv2.countNonZero(mask) / (mask.shape[0] * mask.shape[1])
     return green_ratio > 0.15
 
-# Streamlit UI
+# ------------------ Streamlit UI ------------------
+
 st.set_page_config(page_title="🍅 Tomato Leaf Disease Detector", layout="wide", page_icon="🍅")
 
 with st.sidebar:
@@ -95,7 +77,7 @@ with st.sidebar:
     st.write("""
         This app detects tomato leaf diseases using a deep learning model.
         Upload an image of a tomato leaf to get the disease prediction and confidence score.
-        
+
         **Class Labels:**
         - Bacterial Spot
         - Early Blight
