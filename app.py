@@ -1,3 +1,6 @@
+import os
+os.system("pip install matplotlib")
+
 import streamlit as st
 from PIL import Image
 import numpy as np
@@ -138,3 +141,4 @@ else:
 
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: gray;'>© 2025 Tomato Leaf Disease Detector | Powered by TensorFlow & Streamlit 🍅</p>", unsafe_allow_html=True)
+
