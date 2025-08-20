@@ -9,12 +9,12 @@ from tensorflow.keras.preprocessing.image import img_to_array
 
 # ------------------ Configuration ------------------
 
-# Google Drive file ID and model path
+# Google Drive model ID and file name
 DRIVE_FILE_ID = "1VE7RUXKh4GupqdivjHqX_5bT6xz2z8lq"
 MODEL_PATH = "tomato_model.h5"
 MODEL_URL = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}"
 
-# Class labels for predictions
+# Class labels
 class_names = [
     'Tomato___Bacterial_spot',
     'Tomato___Early_blight',
@@ -28,22 +28,21 @@ class_names = [
     'Tomato___healthy'
 ]
 
-# ------------------ Model Loading ------------------
+# ------------------ Model Download & Load ------------------
 
-# Download the model if not already present
 if not os.path.exists(MODEL_PATH):
     with st.spinner("⬇️ Downloading model from Google Drive..."):
         gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
 
-# Safety check for corrupted download
-if os.path.getsize(MODEL_PATH) < 1000:
-    st.error("❌ Downloaded model file is corrupted or incomplete.")
+# Validate model file
+if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) < 1000:
+    st.error("❌ Model file is missing or appears corrupted. Please check the Drive link or upload a valid model.")
     st.stop()
 
-# Load the model
+# Load model
 model = load_model(MODEL_PATH)
 
-# ------------------ Utility Functions ------------------
+# ------------------ Prediction Functions ------------------
 
 def preprocess_image(image: Image.Image):
     image = image.convert('RGB').resize((150, 150))
@@ -100,11 +99,13 @@ uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png
 
 if uploaded_file:
     image = Image.open(uploaded_file)
+
     if not is_tomato_leaf_color(image):
         st.error("❌ This does not look like a tomato leaf (not enough green pixels). Please upload a valid tomato leaf image.")
     else:
         predicted_label, confidence = predict(image)
         confidence_threshold = 60
+
         if (predicted_label not in class_names) or (confidence < confidence_threshold):
             st.error("❌ The uploaded image does not appear to be a tomato leaf from the dataset. Please upload a valid tomato leaf image.")
         else:
